@@ -1,48 +1,89 @@
-name: Deploy Docker App on ECS Fargate with CI/CD
+name: CI/CD to ECS Fargate (ECR)
 
 on:
   push:
-    branches: 
-    - main
+    branches: [ "main" ]
   workflow_dispatch:
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: poc-24
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: poc24-node-app
   CONTAINER_NAME: webapp
   ECS_CLUSTER: poc24-cluster
   ECS_SERVICE: poc24-service
-  TASK_DEF_FAMILY: poc-24-task
+  TASK_DEF_FAMILY: poc24-task
   IMAGE_TAG: latest
 
 jobs:
-  build and deploy: 
-  runs on: self-hosted
+  build-and-deploy:
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Checkout source
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-  - name: Configure AWS Credentials
-    uses: aws-actions/configure-aws-credentials@v4
-    with: 
-      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-  - name: Log into Amazon ECR
-    id: login-ecr
-    uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-  - name: Build,tag and publish image to ECR
-    env: 
-      ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-    run: |
-      IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
-      echo "building $IMAGE_URI"
-      docker build -t "$IMAGE_URI"
-      docker push "$IMAGE_URI"
-      echo"IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
-      
-   
-  
+      - name: Build, tag, and push image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          echo "Building $IMAGE_URI"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: |
+            {
+              "family": "${{ env.TASK_DEF_FAMILY }}",
+              "networkMode": "awsvpc",
+              "requiresCompatibilities": ["FARGATE"],
+              "cpu": "256",
+              "memory": "512",
+              "executionRoleArn": "${{ secrets.ECS_EXECUTION_ROLE_ARN }}",
+              "taskRoleArn": "${{ secrets.ECS_TASK_ROLE_ARN }}",
+              "containerDefinitions": [
+                {
+                  "name": "${{ env.CONTAINER_NAME }}",
+                  "image": "${{ env.IMAGE_URI }}",
+                  "portMappings": [
+                    { "containerPort": 3000, "protocol": "tcp" }
+                  ],
+                  "essential": true,
+                  "healthCheck": {
+                    "command": ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+                    "interval": 30,
+                    "timeout": 5,
+                    "retries": 3,
+                    "startPeriod": 10
+                  },
+                  "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                      "awslogs-group": "/ecs/${{ env.TASK_DEF_FAMILY }}",
+                      "awslogs-region": "${{ env.AWS_REGION }}",
+                      "awslogs-stream-prefix": "ecs"
+                    }
+                  },
+                  "environment": [
+                    { "name": "PORT", "value": "3000" }
+                  ]
+                }
+              ]
+            }
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
