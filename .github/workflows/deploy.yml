@@ -1,0 +1,37 @@
+name: Deploy Docker App on ECS Fargate with CI/CD
+
+on:
+  push:
+    branches: 
+    - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: poc-24
+  CONTAINER_NAME: webapp
+  ECS_CLUSTER: poc24-cluster
+  ECS_SERVICE: poc24-service
+  TASK_DEF_FAMILY: poc-24-task
+  IMAGE_TAG: latest
+
+jobs:
+  build and deploy: 
+  runs on: self-hosted
+
+steps:
+  - name: Checkout source
+    uses: actions/checkout@v4
+
+  - name: Configure AWS Credentials
+    uses: aws-actions/configure-aws-credentials@v4
+    with: 
+      aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws-region: ${{ secrets.AWS_REGION }}
+
+  - name: Log into Amazon ECR
+    id: login-ecr
+    with
+  
+  
