@@ -22,6 +22,45 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+    
+      - name: Install Docker Engine (Ubuntu)
+        run: |
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "Docker not found. Installing Docker Engine..."
+            curl -fsSL https://get.docker.com -o get-docker.sh
+            sudo sh get-docker.sh
+            sudo systemctl enable --now docker
+            # Add current user to docker group (takes effect next login; we still use sudo below)
+            sudo usermod -aG docker "$USER" || true
+          else
+            echo "Docker already installed: $(docker --version)"
+          fi
+          sudo docker version
+
+     
+      - name: Install AWS CLI v2
+        run: |
+          echo "Removing any existing AWS CLI installation..."
+          sudo rm -rf aws
+          sudo rm -rf /usr/local/aws-cli
+          sudo rm -f awscliv2.zip
+
+          echo "Downloading AWS CLI v2..."
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+          echo "Updating apt and installing unzip..."
+          sudo apt update
+          sudo apt install unzip -y
+
+          echo "Unzipping AWS CLI installer..."
+          unzip -o awscliv2.zip
+
+          echo "Installing AWS CLI v2..."
+          sudo ./aws/install
+
+          echo "Verifying AWS CLI installation..."
+          aws --version
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -39,8 +78,8 @@ jobs:
         run: |
           IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
           echo "Building $IMAGE_URI"
-          docker build -t "$IMAGE_URI" .
-          docker push "$IMAGE_URI"
+          sudo docker build -t "$IMAGE_URI" .
+          sudo docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
       - name: Deploy to Amazon ECS
@@ -58,7 +97,7 @@ jobs:
               "containerDefinitions": [
                 {
                   "name": "${{ env.CONTAINER_NAME }}",
-                  "image": "${{ env.IMAGE_URI }}",
+                  "image": "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}",
                   "portMappings": [
                     { "containerPort": 3000, "protocol": "tcp" }
                   ],
