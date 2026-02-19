@@ -17,6 +17,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: self-hosted
+    # If you switch to GitHub OIDC later, uncomment permissions below:
     # permissions:
     #   id-token: write
     #   contents: read
@@ -25,7 +26,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Install Docker if missing (self-hosted convenience)
+      # Self-hosted convenience: install Docker if missing
       - name: Install Docker Engine (Ubuntu)
         run: |
           if ! command -v docker >/dev/null 2>&1; then
@@ -33,13 +34,14 @@ jobs:
             curl -fsSL https://get.docker.com -o get-docker.sh
             sudo sh get-docker.sh
             sudo systemctl enable --now docker
+            # Add current user to docker group (takes effect next login; we'll use sudo below)
             sudo usermod -aG docker "$USER" || true
           else
             echo "Docker already installed: $(docker --version)"
           fi
           sudo docker version
 
-      # Install AWS CLI v2 (self-hosted convenience)
+      # Self-hosted convenience: install AWS CLI v2 (for 'aws ecr' and 'aws logs')
       - name: Install AWS CLI v2
         run: |
           echo "Cleaning any previous AWS CLI..."
@@ -52,38 +54,22 @@ jobs:
           sudo ./aws/install
           aws --version
 
-      # Configure AWS creds (you can switch to OIDC later)
+      # If you prefer OIDC, replace this with role-to-assume and remove access keys
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          # For OIDC (recommended):
+          # For OIDC (recommended), use:
           # role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/GitHubOIDC-ECR-ECS
-
-      # ✅ NEW: Create ECS cluster if it doesn't exist
-      - name: Ensure ECS cluster exists
-        env:
-          AWS_REGION: ${{ env.AWS_REGION }}
-          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
-        run: |
-          set -euo pipefail
-          echo "Checking ECS cluster '$ECS_CLUSTER' in region '$AWS_REGION'..."
-          if aws ecs describe-clusters --clusters "$ECS_CLUSTER" --region "$AWS_REGION" \
-               --query 'failures[?reason==`MISSING`]' --output json | grep -q 'MISSING'; then
-            echo "Cluster '$ECS_CLUSTER' not found. Creating..."
-            aws ecs create-cluster --cluster-name "$ECS_CLUSTER" --region "$AWS_REGION"
-            echo "Cluster '$ECS_CLUSTER' created."
-          else
-            echo "Cluster '$ECS_CLUSTER' exists."
-          fi
+          # aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Ensure ECR repo exists (create if missing)
+      # Ensure the ECR repository is present (create if missing)
       - name: Ensure ECR repository exists
         env:
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
@@ -100,7 +86,7 @@ jobs:
             echo "ECR repository '$ECR_REPOSITORY' created."
           fi
 
-      # Because we use 'sudo docker ...', also log in ECR for root
+      # Because we use 'sudo docker ...', log in ECR for root as well
       - name: Login ECR for root (for sudo docker)
         run: |
           aws ecr get-login-password --region "${{ env.AWS_REGION }}" \
@@ -115,12 +101,11 @@ jobs:
           set -euo pipefail
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           echo "Building $IMAGE_URI"
-          # Optional: speed up if you want BuildKit caching etc.
           sudo docker build -t "$IMAGE_URI" .
           sudo docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
-      # Optional: Ensure CloudWatch Logs group for awslogs driver
+      # (Optional but helpful) Ensure CloudWatch Log Group exists for awslogs driver
       - name: Ensure CloudWatch Logs group exists
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
@@ -134,6 +119,7 @@ jobs:
             aws logs create-log-group --log-group-name "$LOG_GROUP" --region "$AWS_REGION"
           fi
 
+      # Write the task definition to a file (the deploy Action expects a file path)
       - name: Render task definition with new image
         env:
           TASK_DEF_FAMILY: ${{ env.TASK_DEF_FAMILY }}
@@ -184,18 +170,6 @@ jobs:
           EOF
           echo "taskdef.json rendered with IMAGE_URI=$IMAGE_URI"
           cat taskdef.json
-
-      # Optional: fail fast if service is missing/misconfigured
-      - name: Validate ECS service exists
-        run: |
-          set -euo pipefail
-          if ! aws ecs describe-services --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" --region "${{ env.AWS_REGION }}" \
-            --query 'services[?serviceName==`'${{ env.ECS_SERVICE }}'` && status==`ACTIVE`].serviceName' --output text | grep -q "${{ env.ECS_SERVICE }}"; then
-            echo "ERROR: ECS service '${{ env.ECS_SERVICE }}' not found or not ACTIVE on cluster '${{ env.ECS_CLUSTER }}'."
-            echo "Tip: Create the service once via Console/Terraform with VPC subnets/SG/target group, then rerun this workflow."
-            exit 1
-          fi
-          echo "ECS service validated."
 
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
