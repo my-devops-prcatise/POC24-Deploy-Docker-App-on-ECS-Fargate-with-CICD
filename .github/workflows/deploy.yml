@@ -22,7 +22,6 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-    
       - name: Install Docker Engine (Ubuntu)
         run: |
           if ! command -v docker >/dev/null 2>&1; then
@@ -37,7 +36,6 @@ jobs:
           fi
           sudo docker version
 
-     
       - name: Install AWS CLI v2
         run: |
           echo "Removing any existing AWS CLI installation..."
@@ -71,6 +69,20 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+      # ✅ Added: Make sure the ECR repository exists (create if missing)
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" >/dev/null 2>&1 \
+          || aws ecr create-repository --repository-names "${{ env.ECR_REPOSITORY }}" \
+               --image-scanning-configuration scanOnPush=true \
+               --region "${{ env.AWS_REGION }}"
+
+      # ✅ Added: Also login ECR for root (only needed because you use 'sudo docker ...')
+      - name: Login ECR for root (for sudo docker)
+        run: |
+          aws ecr get-login-password --region "${{ env.AWS_REGION }}" \
+          | sudo docker login --username AWS --password-stdin "${{ steps.login-ecr.outputs.registry }}"
 
       - name: Build, tag, and push image to ECR
         env:
