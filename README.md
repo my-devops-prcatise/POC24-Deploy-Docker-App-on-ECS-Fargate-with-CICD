@@ -3,7 +3,7 @@
 
 # **CI/CD Pipeline to Deploy Node.js App on AWS ECS Fargate Using GitHub Actions**
 
-## ** Overview**
+## Overview
 
 This project demonstrates a complete **CI/CD pipeline** where a Node.js application is automatically deployed to **AWS ECS Fargate** using **GitHub Actions**.
 
@@ -19,14 +19,14 @@ This setup follows a production‑like workflow and is fully automated.
 
 ***
 
-## ** Architecture Flow**
+## Architecture Flow
 
     GitHub → GitHub Actions → Docker Build → Amazon ECR 
            → ECS Task Definition → ECS Fargate → Public IP → Browser
 
 ***
 
-## ** Project Structure**
+## Project Structure
 
     ├── app.js
     ├── package.json
@@ -37,7 +37,7 @@ This setup follows a production‑like workflow and is fully automated.
 
 ***
 
-## ** Technologies Used**
+## Technologies Used
 
 *   **Node.js + Express**
 *   **Docker**
@@ -48,7 +48,7 @@ This setup follows a production‑like workflow and is fully automated.
 
 ***
 
-## ** Application Details**
+## Application Details
 
 The application is a simple Express server with two endpoints:
 
@@ -62,7 +62,7 @@ The container listens on:
 
 ***
 
-## ** Dockerfile Summary**
+## Dockerfile Summary
 
 *   Base Image: `node:20-alpine`
 *   Installs dependencies
@@ -72,9 +72,9 @@ The container listens on:
 
 ***
 
-## ** AWS Resources Created**
+## AWS Resources Created
 
-### **1. Amazon ECR Repository**
+### 1. Amazon ECR Repository
 
 Stores Docker images.
 
@@ -82,11 +82,11 @@ Example:
 
     poc24-node-app
 
-### **2. ECS Cluster**
+### 2. ECS Cluster
 
     poc24-cluster
 
-### **3. ECS Service + Task Definition**
+### 3. ECS Service + Task Definition
 
 *   Launch type: **Fargate**
 *   CPU/MEM: Configurable
@@ -97,7 +97,7 @@ Example:
 
     Port 3000 → 0.0.0.0/0
 
-### **4. IAM Roles**
+### 4. IAM Roles
 
 *   Task Execution Role
 *   Task Role
@@ -106,7 +106,7 @@ These allow ECS to pull images from ECR and send logs to CloudWatch.
 
 ***
 
-## ** GitHub Secrets Required**
+## GitHub Secrets Required
 
 Store these under **Repository → Settings → Secrets → Actions**:
 
@@ -125,7 +125,7 @@ Store these under **Repository → Settings → Secrets → Actions**:
 
 ***
 
-## ** GitHub Actions Workflow Summary**
+## GitHub Actions Workflow Summary
 
 ### The pipeline performs:
 
@@ -146,7 +146,7 @@ Trigger:
 
 ***
 
-## ** Accessing the Application**
+## Accessing the Application
 
 After deployment:
 
@@ -164,7 +164,7 @@ You should see:
 
 ***
 
-## ** Summary**
+## Summary
 
 This POC demonstrates:
 
