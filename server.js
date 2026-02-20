@@ -3,6 +3,6 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
-app.get('/', (req, res) => res.send('POC 24: Deployed nodejs application on Fargate, done by Devendhar'));
+app.get('/', (req, res) => res.send('POC 24: Deploy Docker App on ECS Fargate with CI/CD, done by Devendhar'));
 
 app.listen(port, '0.0.0.0', () => console.log(`Server listening on ${port}`));
